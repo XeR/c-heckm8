@@ -151,7 +151,6 @@ int no_leak(libusb_device_handle *handle)
 	return libusb_control_transfer(handle, LIBUSB_ENDPOINT_IN,
 				       LIBUSB_REQUEST_GET_DESCRIPTOR, 0x304, 0,
 				       NULL, 0xC1, 1);
-	//return libusb_get_string_descriptor(handle, 0x04, 0x409, NULL, 0xC1);
 }
 
 
@@ -160,7 +159,6 @@ int leak(libusb_device_handle *handle)
 	return libusb_control_transfer(handle, LIBUSB_ENDPOINT_IN,
 				       LIBUSB_REQUEST_GET_DESCRIPTOR, 0x304, 0,
 				       NULL, 0xC0, 1);
-	//return libusb_get_string_descriptor(handle, 0x04, 0x409, NULL, 0xC0);
 }
 
 void stage1(libusb_device_handle *handle)
@@ -205,7 +203,6 @@ void async(libusb_device_handle *handle)
 		;
 
 	libusb_cancel_transfer(transfer);
-//	libusb_free_transfer(transfer);
 }
 
 void stage2(libusb_device_handle *handle)
