@@ -343,27 +343,7 @@ int main(int argc, char* argv[])
 
 	stage3(handle, fd);
 
-	libusb_release_interface(handle, 0);
-	libusb_close(handle);
-
-	/* Give some time for it to reboot */
-	/* Actually it doesn't work ; check demsg */
 	ret = EXIT_SUCCESS;
-	goto clean1;
-	sleep(5);
-
-	/* Find the correct device by vendore id/device id */
-	handle = libusb_open_device_with_vid_pid(ctx, VND_APPLE, DEV_DFU);
-	if(NULL == handle) {
-		perror("libusb_open_device_with_vid_pid");
-		goto clean1;
-	}
-
-	/* Retrieve seial number */
-	size = libusb_get_string_descriptor_ascii(handle, desc.iSerialNumber,
-	                                          buffer, sizeof(buffer));
-	printf("SerialNumber[%d]: %s\n", size, buffer);
-
 clean3:
 	libusb_release_interface(handle, 0);
 
