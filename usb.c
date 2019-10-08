@@ -186,7 +186,7 @@ void stage1(libusb_device_handle *handle)
 	}
 }
 
-void async(libusb_device_handle *handle)
+void stage2(libusb_device_handle *handle)
 {
 	char buffer[0x808] = {0};
 	struct libusb_transfer *transfer;
@@ -203,11 +203,7 @@ void async(libusb_device_handle *handle)
 		;
 
 	libusb_cancel_transfer(transfer);
-}
 
-void stage2(libusb_device_handle *handle)
-{
-	async(handle);
 	libusb_control_transfer(handle, 0x21, 4, 0, 0, NULL, 0, 0);
 }
 
