@@ -317,10 +317,6 @@ int main(int argc, char* argv[])
 		goto clean2;
 	}
 
-	size = libusb_get_string_descriptor_ascii(handle, desc.iSerialNumber,
-						  buffer, sizeof(buffer));
-	printf("SerialNumber[%d]: %s\n", size, buffer);
-
 	stage2(handle);
 
 	libusb_release_interface(handle, 0);
